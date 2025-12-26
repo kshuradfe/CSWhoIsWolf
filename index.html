@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CS 5v5 内战 - 实时版</title>
+    <link rel="stylesheet" href="styles.css">
+    
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js"></script>
+</head>
+<body class="cs-bg text-gray-200 min-h-screen">
+
+    <div id="app" class="max-w-5xl mx-auto p-4">
+        
+        <header class="flex justify-between items-center mb-8 border-b border-gray-700 pb-4">
+            <div>
+                <h1 class="text-3xl font-bold text-yellow-500">CS:GO/2 谁是卧底</h1>
+                <p class="text-xs text-gray-500">Leetify Server: Chicago</p>
+            </div>
+            <div class="text-right">
+                <div v-if="isJoined" class="text-sm">
+                    我是: <span class="font-bold text-green-400">{{ myPlayerName }}</span>
+                </div>
+                <button @click="toggleAdmin" class="text-xs text-gray-600 hover:text-gray-400 underline mt-1">
+                    {{ isAdminMode ? '退出管理' : '管理员模式' }}
+                </button>
+            </div>
+        </header>
+
+        <div v-if="!isJoined" class="flex flex-col items-center justify-center h-96">
+            <div class="bg-gray-800 p-8 rounded-lg shadow-2xl border border-gray-600 text-center">
+                <h2 class="text-xl mb-4">请输入你的游戏 ID</h2>
+                <input v-model="inputName" @keyup.enter="joinGame" type="text" placeholder="例如: s1mple" 
+                       class="bg-gray-700 text-white p-3 rounded w-64 text-center border border-gray-500 focus:border-yellow-500 outline-none mb-4 block mx-auto">
+                <button @click="joinGame" :disabled="!inputName" 
+                        class="bg-yellow-600 hover:bg-yellow-500 text-black font-bold py-2 px-8 rounded disabled:opacity-50">
+                    {{ myPlayerName ? '重新加入' : '加入房间' }}
+                </button>
+            </div>
+        </div>
+
+        <div v-else>
+            <div v-if="gameState.step === 'WAITING'" class="text-center">
+                <h2 class="text-2xl mb-4">等待玩家加入 ({{ gameState.players ? gameState.players.length : 0 }}/10)</h2>
+                
+                <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
+                    <div v-for="p in gameState.players" :key="p.name" class="bg-gray-800 p-4 rounded border border-gray-600 flex items-center justify-center">
+                        <span class="font-bold text-lg">{{ p.name }}</span>
+                    </div>
+                    <div v-for="n in (10 - (gameState.players ? gameState.players.length : 0))" :key="n" class="bg-gray-900/50 p-4 rounded border border-dashed border-gray-700 flex items-center justify-center text-gray-600">
+                        等待加入...
+                    </div>
+                </div>
+
+                <div v-if="isAdminMode" class="border-t border-gray-700 pt-6">
+                    <p class="text-red-400 text-sm mb-2">管理员控制区</p>
+                    <button @click="resetRoom" class="mr-4 text-gray-500 underline text-sm">重置房间</button>
+                    <button @click="startGame" :disabled="!gameState.players || gameState.players.length < 2" 
+                            class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-10 rounded shadow-lg disabled:opacity-50">
+                        开始抽签 (Roll Captains)
+                    </button>
+                </div>
+            </div>
+
+            <div v-if="gameState.step === 'DRAFTING'" class="w-full">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-yellow-500">选人阶段</h2>
+                    <p class="text-lg mt-2">
+                        当前回合: 
+                        <span class="font-bold px-2 py-1 rounded" :class="currentDrafter === 'red' ? 'bg-red-900 text-red-200' : 'bg-blue-900 text-blue-200'">
+                            Team {{ currentDrafter === 'red' ? 'RED' : 'BLUE' }}
+                        </span>
+                    </p>
+                    <p class="text-sm text-gray-400">操作人: {{ currentCaptainName }}</p>
+                </div>
+
+                <div class="flex flex-col md:flex-row gap-6">
+                    <div class="flex-1 bg-red-900/20 border-2 border-red-800 rounded p-4">
+                        <h3 class="text-red-500 font-bold text-xl text-center mb-4">TEAM RED</h3>
+                        <ul class="space-y-2">
+                            <li v-for="p in redTeamPlayers" :key="p.name" class="bg-red-900/50 p-2 rounded text-center border border-red-800">
+                                {{ p.name }} <span v-if="isCaptain(p)" class="text-xs text-yellow-400">👑</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div class="flex-1">
+                        <div class="grid grid-cols-1 gap-2">
+                            <button v-for="p in availablePlayers" :key="p.name" 
+                                    @click="pickPlayer(p.name)"
+                                    :disabled="!isMyTurnToPick"
+                                    class="p-3 rounded text-center transition font-bold border"
+                                    :class="isMyTurnToPick ? 'bg-gray-700 hover:bg-yellow-600 cursor-pointer border-gray-500 text-white' : 'bg-gray-800 text-gray-500 cursor-not-allowed border-transparent'">
+                                {{ p.name }}
+                            </button>
+                        </div>
+                        <p v-if="!isMyTurnToPick && !isAdminMode" class="text-center text-gray-500 mt-4 text-sm">等待队长选择...</p>
+                        <p v-if="isAdminMode" class="text-center text-red-400 mt-4 text-xs">管理员可强制代选</p>
+                    </div>
+
+                    <div class="flex-1 bg-blue-900/20 border-2 border-blue-800 rounded p-4">
+                        <h3 class="text-blue-500 font-bold text-xl text-center mb-4">TEAM BLUE</h3>
+                        <ul class="space-y-2">
+                            <li v-for="p in blueTeamPlayers" :key="p.name" class="bg-blue-900/50 p-2 rounded text-center border border-blue-800">
+                                {{ p.name }} <span v-if="isCaptain(p)" class="text-xs text-yellow-400">👑</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div v-if="gameState.step === 'BANNING'" class="w-full">
+                <div class="text-center mb-6">
+                    <h2 class="text-2xl font-bold text-yellow-500">地图 BP (BO1)</h2>
+                    <p class="text-lg mt-2">
+                        当前操作: 
+                        <span class="font-bold px-2 py-1 rounded" :class="currentBanner === 'red' ? 'bg-red-900 text-red-200' : 'bg-blue-900 text-blue-200'">
+                            Team {{ currentBanner === 'red' ? 'RED' : 'BLUE' }}
+                        </span>
+                        <span class="text-sm ml-2">(队长: {{ currentCaptainName }})</span>
+                    </p>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3 max-w-4xl mx-auto">
+                    <button v-for="(status, mapName) in gameState.mapPool" :key="mapName" 
+                            @click="banMap(mapName)"
+                            :disabled="status.banned || (!isMyTurnToBan && !isAdminMode)"
+                            class="relative h-24 md:h-32 rounded overflow-hidden border transition group"
+                            :class="status.banned ? 'opacity-20 border-gray-800 cursor-not-allowed' : 'border-gray-500 hover:border-yellow-500'">
+                        
+                        <div class="absolute inset-0 bg-gray-700 flex items-center justify-center">
+                            <span class="text-lg md:text-xl font-bold tracking-wider">{{ mapName }}</span>
+                        </div>
+                        
+                        <div v-if="status.banned" class="absolute inset-0 flex items-center justify-center bg-black/60">
+                            <span class="text-red-500 font-bold text-xl rotate-12 border-2 border-red-500 px-2">BAN</span>
+                        </div>
+                    </button>
+                </div>
+
+                <div v-if="finalMap" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50">
+                    <h2 class="text-gray-400 text-xl mb-4">比赛地图确定</h2>
+                    <h1 class="text-6xl font-bold text-green-500 mb-8">{{ finalMap }}</h1>
+                    
+                    <button v-if="isAdminMode" @click="generateRoles" class="bg-yellow-600 hover:bg-yellow-500 text-black font-bold py-3 px-8 rounded">
+                        分发卧底身份
+                    </button>
+                    <p v-else class="text-gray-500 animate-pulse">等待管理员分发身份...</p>
+                </div>
+            </div>
+
+            <div v-if="gameState.step === 'PLAYING'" class="max-w-2xl mx-auto text-center pt-10">
+                <h2 class="text-3xl font-bold mb-8">游戏已开始</h2>
+
+                <div class="bg-gray-800 p-8 rounded-xl border-2 shadow-2xl relative overflow-hidden group"
+                     :class="myRole === '卧底' ? 'border-purple-600' : 'border-green-600'">
+                    
+                    <p class="text-gray-400 mb-2">你的 ID: {{ myPlayerName }}</p>
+                    <p class="text-gray-400 mb-6">所属队伍: <span class="font-bold" :class="myTeam === 'red' ? 'text-red-500' : 'text-blue-400'">{{ myTeam === 'red' ? 'Team RED' : 'Team BLUE' }}</span></p>
+                    
+                    <div class="py-6 border-t border-b border-gray-700 mb-6">
+                        <p class="text-sm text-gray-500 mb-2">你的身份是</p>
+                        <div @click="showRole = !showRole" class="cursor-pointer select-none">
+                            <span v-if="!showRole" class="text-4xl font-bold text-gray-600 blur-sm">点击查看</span>
+                            <span v-else class="text-5xl font-bold" :class="myRole === '卧底' ? 'text-purple-500' : 'text-green-500'">
+                                {{ myRole }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="text-left bg-black/30 p-4 rounded text-sm">
+                        <p class="font-bold mb-1 text-yellow-500">任务目标：</p>
+                        <p v-if="myRole === '卧底'">
+                            你是卧底！你需要<span class="text-red-400 font-bold">让你的队伍输掉比赛</span>，但必须演得像个正常人，不能被队友发现。
+                        </p>
+                        <p v-else>
+                            你是平民！你需要<span class="text-green-400 font-bold">赢下比赛</span>，并在赛后找出谁是队伍里的卧底。
+                        </p>
+                    </div>
+                </div>
+
+                <div v-if="isAdminMode" class="mt-12">
+                    <button @click="resetRoom" class="text-red-500 text-sm underline opacity-50 hover:opacity-100">结束游戏并重置</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
