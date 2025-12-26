@@ -48,12 +48,34 @@
                 <h2 class="text-2xl mb-4">等待玩家加入 ({{ gameState.players ? gameState.players.length : 0 }}/10)</h2>
                 
                 <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
-                    <div v-for="p in gameState.players" :key="p.name" class="bg-gray-800 p-4 rounded border border-gray-600 flex items-center justify-center">
-                        <span class="font-bold text-lg">{{ p.name }}</span>
+                    <div v-for="p in gameState.players" :key="p.name" 
+                         class="bg-gray-800 p-4 rounded border border-gray-600 relative group">
+                        <div class="flex flex-col items-center justify-center">
+                            <span class="font-bold text-lg mb-2">{{ p.name }}</span>
+                            
+                            <button v-if="p.name === myPlayerName && !isAdminMode" 
+                                    @click="leaveGame"
+                                    class="text-xs bg-red-600/80 hover:bg-red-500 text-white px-3 py-1 rounded transition">
+                                退出
+                            </button>
+                            
+                            <button v-if="isAdminMode" 
+                                    @click="kickPlayer(p.name)"
+                                    class="text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-1 rounded transition">
+                                踢出
+                            </button>
+                        </div>
                     </div>
                     <div v-for="n in (10 - (gameState.players ? gameState.players.length : 0))" :key="n" class="bg-gray-900/50 p-4 rounded border border-dashed border-gray-700 flex items-center justify-center text-gray-600">
                         等待加入...
                     </div>
+                </div>
+
+                <div v-if="isJoined && !isAdminMode" class="mb-6">
+                    <button @click="leaveGame" 
+                            class="bg-gray-700 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded">
+                        退出房间
+                    </button>
                 </div>
 
                 <div v-if="isAdminMode" class="border-t border-gray-700 pt-6">

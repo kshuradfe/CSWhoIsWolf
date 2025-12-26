@@ -140,6 +140,31 @@ createApp({
             });
         };
 
+        const leaveGame = () => {
+            if (!confirm('确定要退出房间吗？')) return;
+            
+            const playerToRemove = gameState.value.players.find(p => p.name === myPlayerName.value);
+            if (!playerToRemove) return;
+
+            db.collection('rooms').doc(ROOM_ID).update({
+                players: firebase.firestore.FieldValue.arrayRemove(playerToRemove)
+            }).then(() => {
+                myPlayerName.value = '';
+                localStorage.removeItem('cs_player_name');
+            });
+        };
+
+        const kickPlayer = (playerName) => {
+            if (!confirm(`确定要踢掉 ${playerName} 吗？`)) return;
+            
+            const playerToRemove = gameState.value.players.find(p => p.name === playerName);
+            if (!playerToRemove) return;
+
+            db.collection('rooms').doc(ROOM_ID).update({
+                players: firebase.firestore.FieldValue.arrayRemove(playerToRemove)
+            });
+        };
+
         const startGame = () => {
             if (!confirm('确定要开始吗？将锁定玩家列表。')) return;
             initializeGameLogic(gameState.value.players);
@@ -475,7 +500,7 @@ createApp({
         };
 
         return {
-            myPlayerName, inputName, joinGame, gameState, isAdminMode, toggleAdmin,
+            myPlayerName, inputName, joinGame, leaveGame, kickPlayer, gameState, isAdminMode, toggleAdmin,
             redTeamPlayers, blueTeamPlayers, availablePlayers,
             currentDrafter, isMyTurnToPick, pickPlayer, currentCaptainName,
             currentBanner, isMyTurnToBan, banMap,
