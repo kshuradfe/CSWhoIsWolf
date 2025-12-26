@@ -253,6 +253,8 @@ createApp({
                 teamMembers.forEach((p, idx) => {
                     let mainIdx = players.findIndex(mp => mp.name === p.name);
                     players[mainIdx].role = (idx === undercoverIdx) ? '卧底' : '平民';
+                    // Initialize confirmed property
+                    players[mainIdx].confirmed = isTestMode.value && p.name.startsWith('Bot_') ? true : false;
                 });
             };
 
@@ -261,7 +263,11 @@ createApp({
 
             db.collection('rooms').doc(ROOM_ID).update({
                 players: players,
-                step: 'PLAYING'
+                step: 'ROLE_REVEAL',
+                voting: {
+                    red: { status: 'IDLE', votes: {}, candidates: [], result: null },
+                    blue: { status: 'IDLE', votes: {}, candidates: [], result: null }
+                }
             });
         };
 
@@ -271,11 +277,154 @@ createApp({
                 step: 'WAITING',
                 players: [],
                 mapPool: {},
-                draftIndex: 0
+                draftIndex: 0,
+                voting: null
             });
         };
 
         const isCaptain = (p) => p.isCaptain;
+
+        // --- Role Confirmation Logic ---
+        const confirmRole = () => {
+            let players = [...gameState.value.players];
+            const myIndex = players.findIndex(p => p.name === myPlayerName.value);
+            if (myIndex !== -1) {
+                players[myIndex].confirmed = true;
+            }
+
+            // Check if all players have confirmed
+            const allConfirmed = players.every(p => p.confirmed === true);
+
+            db.collection('rooms').doc(ROOM_ID).update({
+                players: players,
+                ...(allConfirmed && { step: 'VOTING' })
+            });
+        };
+
+        const confirmedCount = computed(() => {
+            if (!gameState.value.players) return 0;
+            return gameState.value.players.filter(p => p.confirmed === true).length;
+        });
+
+        const isMyRoleConfirmed = computed(() => {
+            const me = myPlayerInfo.value;
+            return me ? me.confirmed === true : false;
+        });
+
+        // --- Voting Logic ---
+        const startVoting = (team) => {
+            if (!gameState.value.voting) return;
+            
+            const teamPlayers = gameState.value.players.filter(p => p.team === team).map(p => p.name);
+            
+            let votingData = { ...gameState.value.voting };
+            votingData[team] = {
+                status: 'ACTIVE',
+                votes: {},
+                candidates: teamPlayers,
+                result: null
+            };
+
+            db.collection('rooms').doc(ROOM_ID).update({
+                voting: votingData
+            });
+        };
+
+        const castVote = (team, targetName) => {
+            if (!gameState.value.voting) return;
+            
+            let votingData = { ...gameState.value.voting };
+            votingData[team].votes[myPlayerName.value] = targetName;
+
+            // Check if all team members have voted
+            const teamSize = gameState.value.players.filter(p => p.team === team).length;
+            const voteCount = Object.keys(votingData[team].votes).length;
+
+            db.collection('rooms').doc(ROOM_ID).update({
+                voting: votingData
+            }).then(() => {
+                if (voteCount >= teamSize) {
+                    resolveVotes(team);
+                }
+            });
+        };
+
+        const resolveVotes = (team) => {
+            if (!gameState.value.voting) return;
+            
+            const votes = gameState.value.voting[team].votes;
+            const voteCounts = {};
+            
+            // Count votes
+            Object.values(votes).forEach(target => {
+                voteCounts[target] = (voteCounts[target] || 0) + 1;
+            });
+
+            // Find max votes
+            const maxVotes = Math.max(...Object.values(voteCounts));
+            const winners = Object.keys(voteCounts).filter(name => voteCounts[name] === maxVotes);
+
+            let votingData = { ...gameState.value.voting };
+
+            if (winners.length === 1) {
+                // Clear winner
+                const eliminatedPlayer = gameState.value.players.find(p => p.name === winners[0]);
+                votingData[team].status = 'FINISHED';
+                votingData[team].result = {
+                    eliminated: winners[0],
+                    role: eliminatedPlayer ? eliminatedPlayer.role : '未知'
+                };
+            } else {
+                // Tie - need re-vote
+                votingData[team].votes = {};
+                votingData[team].candidates = winners;
+                votingData[team].status = 'ACTIVE';
+            }
+
+            db.collection('rooms').doc(ROOM_ID).update({
+                voting: votingData
+            });
+        };
+
+        const simulateBotVotes = (team) => {
+            if (!isTestMode.value) return;
+            
+            const bots = gameState.value.players.filter(p => p.team === team && p.name.startsWith('Bot_'));
+            const candidates = gameState.value.voting[team].candidates;
+            
+            let votingData = { ...gameState.value.voting };
+            
+            bots.forEach(bot => {
+                const randomCandidate = candidates[Math.floor(Math.random() * candidates.length)];
+                votingData[team].votes[bot.name] = randomCandidate;
+            });
+
+            const teamSize = gameState.value.players.filter(p => p.team === team).length;
+            const voteCount = Object.keys(votingData[team].votes).length;
+
+            db.collection('rooms').doc(ROOM_ID).update({
+                voting: votingData
+            }).then(() => {
+                if (voteCount >= teamSize) {
+                    setTimeout(() => resolveVotes(team), 500);
+                }
+            });
+        };
+
+        const isGameOver = computed(() => {
+            if (!gameState.value.voting) return false;
+            return gameState.value.voting.red.status === 'FINISHED' && 
+                   gameState.value.voting.blue.status === 'FINISHED';
+        });
+
+        const myVote = (team) => {
+            if (!gameState.value.voting || !gameState.value.voting[team]) return null;
+            return gameState.value.voting[team].votes[myPlayerName.value] || null;
+        };
+
+        const isTeamCaptain = (team) => {
+            return gameState.value.captains && gameState.value.captains[team] === myPlayerName.value;
+        };
 
         // --- 核心修改：带密码验证的管理员切换 ---
         const toggleAdmin = async () => {
@@ -332,7 +481,11 @@ createApp({
             currentBanner, isMyTurnToBan, banMap,
             finalMap, generateRoles, myTeam, myRole, showRole, resetRoom, startGame, isCaptain,
             isJoined,
-            isTestMode, activateTestMode
+            isTestMode, activateTestMode,
+            // Role Confirmation
+            confirmRole, confirmedCount, isMyRoleConfirmed,
+            // Voting
+            startVoting, castVote, simulateBotVotes, isGameOver, myVote, isTeamCaptain
         };
     }
 }).mount('#app');

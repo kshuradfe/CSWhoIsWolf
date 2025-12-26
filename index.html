@@ -159,6 +159,213 @@
                 </div>
             </div>
 
+            <div v-if="gameState.step === 'ROLE_REVEAL'" class="max-w-2xl mx-auto text-center pt-10">
+                <h2 class="text-3xl font-bold mb-8 text-yellow-500">身份确认阶段</h2>
+
+                <div class="bg-gray-800 p-8 rounded-xl border-2 shadow-2xl relative overflow-hidden group mb-8"
+                     :class="myRole === '卧底' ? 'border-purple-600' : 'border-green-600'">
+                    
+                    <p class="text-gray-400 mb-2">你的 ID: {{ myPlayerName }}</p>
+                    <p class="text-gray-400 mb-6">所属队伍: <span class="font-bold" :class="myTeam === 'red' ? 'text-red-500' : 'text-blue-400'">{{ myTeam === 'red' ? 'Team RED' : 'Team BLUE' }}</span></p>
+                    
+                    <div class="py-6 border-t border-b border-gray-700 mb-6">
+                        <p class="text-sm text-gray-500 mb-2">你的身份是</p>
+                        <div @click="showRole = !showRole" class="cursor-pointer select-none">
+                            <span v-if="!showRole" class="text-4xl font-bold text-gray-600 blur-sm">点击查看</span>
+                            <span v-else class="text-5xl font-bold" :class="myRole === '卧底' ? 'text-purple-500' : 'text-green-500'">
+                                {{ myRole }}
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="text-left bg-black/30 p-4 rounded text-sm mb-6">
+                        <p class="font-bold mb-1 text-yellow-500">任务目标：</p>
+                        <p v-if="myRole === '卧底'">
+                            你是卧底！你需要<span class="text-red-400 font-bold">让你的队伍输掉比赛</span>，但必须演得像个正常人，不能被队友发现。
+                        </p>
+                        <p v-else>
+                            你是平民！你需要<span class="text-green-400 font-bold">赢下比赛</span>，并在赛后找出谁是队伍里的卧底。
+                        </p>
+                    </div>
+
+                    <button v-if="!isMyRoleConfirmed" @click="confirmRole" 
+                            class="bg-yellow-600 hover:bg-yellow-500 text-black font-bold py-3 px-10 rounded shadow-lg transition">
+                        确认身份 (Confirm)
+                    </button>
+                    <div v-else class="text-green-400 font-bold text-lg">
+                        ✓ 已确认
+                    </div>
+                </div>
+
+                <div class="bg-gray-900/50 p-6 rounded border border-gray-700">
+                    <h3 class="text-lg font-bold mb-4 text-gray-300">等待其他玩家确认...</h3>
+                    <p class="text-3xl font-bold text-yellow-500 mb-4">{{ confirmedCount }}/10</p>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        <div v-for="p in gameState.players" :key="p.name" class="flex items-center justify-between p-2 rounded"
+                             :class="p.confirmed ? 'bg-green-900/30 text-green-400' : 'bg-gray-800 text-gray-500'">
+                            <span>{{ p.name }}</span>
+                            <span v-if="p.confirmed">✓</span>
+                            <span v-else>⏳</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="isTestMode" class="mt-8 p-4 bg-gray-900/80 rounded border border-yellow-600/50 text-left">
+                    <h3 class="text-yellow-500 font-bold mb-4 flex items-center">
+                        <span class="text-xl mr-2">🕵️</span> [测试模式] 上帝视角
+                    </h3>
+                    <p class="text-xs text-gray-400 mb-2">机器人已自动确认身份</p>
+                </div>
+            </div>
+
+            <div v-if="gameState.step === 'VOTING'" class="w-full">
+                <h2 class="text-3xl font-bold mb-8 text-center text-yellow-500">投票淘汰阶段</h2>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
+                    <div v-for="team in ['red', 'blue']" :key="team" 
+                         class="p-6 rounded-xl border-2"
+                         :class="team === 'red' ? 'bg-red-900/10 border-red-800' : 'bg-blue-900/10 border-blue-800'">
+                        
+                        <h3 class="text-2xl font-bold text-center mb-4"
+                            :class="team === 'red' ? 'text-red-500' : 'text-blue-500'">
+                            Team {{ team === 'red' ? 'RED' : 'BLUE' }}
+                        </h3>
+
+                        <div v-if="gameState.voting && gameState.voting[team].status === 'IDLE'" class="text-center py-8">
+                            <p class="text-gray-400 mb-4">投票尚未开始</p>
+                            <button v-if="isTeamCaptain(team) || isTestMode || isAdminMode" 
+                                    @click="startVoting(team)"
+                                    class="bg-yellow-600 hover:bg-yellow-500 text-black font-bold py-2 px-6 rounded">
+                                开始投票 (Captain)
+                            </button>
+                            <p v-else class="text-sm text-gray-500">等待队长开始投票...</p>
+                        </div>
+
+                        <div v-if="gameState.voting && gameState.voting[team].status === 'ACTIVE'" class="space-y-4">
+                            <div v-if="gameState.voting[team].candidates.length < gameState.players.filter(p => p.team === team).length"
+                                 class="bg-yellow-900/30 border border-yellow-600 p-3 rounded mb-4">
+                                <p class="text-yellow-400 font-bold text-sm">⚠️ 平票！重新投票</p>
+                                <p class="text-xs text-gray-300 mt-1">
+                                    候选人: {{ gameState.voting[team].candidates.join(', ') }}
+                                </p>
+                            </div>
+
+                            <div v-if="myTeam === team || isTestMode || isAdminMode">
+                                <p class="text-sm text-gray-400 mb-3">
+                                    选择你要投票淘汰的队友:
+                                    <span v-if="(isTestMode || isAdminMode) && myTeam !== team" class="text-yellow-400 text-xs ml-2">
+                                        [管理员模式 - 可操作对方队伍]
+                                    </span>
+                                </p>
+                                <div class="grid gap-2">
+                                    <button v-for="candidate in gameState.voting[team].candidates" 
+                                            :key="candidate"
+                                            @click="castVote(team, candidate)"
+                                            :disabled="myVote(team) !== null"
+                                            class="p-3 rounded font-bold border transition"
+                                            :class="myVote(team) === candidate ? 'bg-yellow-600 text-black border-yellow-400' : 
+                                                    myVote(team) ? 'bg-gray-800 text-gray-600 cursor-not-allowed border-gray-700' : 
+                                                    'bg-gray-700 hover:bg-gray-600 text-white border-gray-500'">
+                                        {{ candidate }} {{ myVote(team) === candidate ? '✓' : '' }}
+                                    </button>
+                                </div>
+                                <p v-if="myVote(team)" class="text-green-400 text-sm mt-3 text-center">✓ 你已投票</p>
+                            </div>
+                            
+                            <div v-else class="text-center text-gray-500 py-4">
+                                <p>对方队伍正在投票中...</p>
+                            </div>
+
+                            <div class="mt-4 pt-4 border-t border-gray-700">
+                                <p class="text-xs text-gray-500 text-center">
+                                    已投票: {{ Object.keys(gameState.voting[team].votes).length }}/{{ gameState.players.filter(p => p.team === team).length }}
+                                </p>
+                            </div>
+
+                            <div v-if="isTestMode" class="mt-4">
+                                <button @click="simulateBotVotes(team)" 
+                                        class="w-full bg-indigo-600 hover:bg-indigo-500 text-white text-sm py-2 rounded">
+                                    🤖 模拟机器人投票 (Test Mode)
+                                </button>
+                            </div>
+                        </div>
+
+                        <div v-if="gameState.voting && gameState.voting[team].status === 'FINISHED'" 
+                             class="bg-gray-900/50 p-6 rounded border border-gray-700 text-center">
+                            <p class="text-lg font-bold mb-2 text-yellow-500">投票结果</p>
+                            <p class="text-xl font-bold mb-1">
+                                {{ gameState.voting[team].result.eliminated }}
+                            </p>
+                            <p class="text-sm text-gray-400">被淘汰</p>
+                            <div class="mt-4 pt-4 border-t border-gray-700">
+                                <p class="text-xs text-gray-500">身份:</p>
+                                <p class="text-2xl font-bold mt-1"
+                                   :class="gameState.voting[team].result.role === '卧底' ? 'text-purple-400' : 'text-green-400'">
+                                    {{ gameState.voting[team].result.role }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div v-if="isTestMode || isAdminMode" class="mt-8 text-center">
+                    <button @click="resetRoom" 
+                            class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-8 rounded shadow-lg border-2 border-red-400">
+                        🛑 强制结束游戏 (Force Reset)
+                    </button>
+                    <p class="text-xs text-gray-500 mt-2">测试模式专用 - 立即重置房间</p>
+                </div>
+
+                <div v-if="isGameOver" class="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50 p-4">
+                    <h2 class="text-5xl font-bold text-yellow-500 mb-8">游戏结束</h2>
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-4xl w-full mb-8">
+                        <div v-for="team in ['red', 'blue']" :key="team" 
+                             class="bg-gray-800 p-6 rounded-xl border-2"
+                             :class="team === 'red' ? 'border-red-600' : 'border-blue-600'">
+                            <h3 class="text-2xl font-bold text-center mb-4"
+                                :class="team === 'red' ? 'text-red-500' : 'text-blue-500'">
+                                Team {{ team === 'red' ? 'RED' : 'BLUE' }}
+                            </h3>
+                            <p class="text-center text-gray-400 mb-2">淘汰玩家:</p>
+                            <p class="text-xl font-bold text-center mb-4">{{ gameState.voting[team].result.eliminated }}</p>
+                            <div class="text-center">
+                                <p class="text-sm text-gray-500">身份:</p>
+                                <p class="text-3xl font-bold mt-2"
+                                   :class="gameState.voting[team].result.role === '卧底' ? 'text-purple-400' : 'text-green-400'">
+                                    {{ gameState.voting[team].result.role }}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div v-if="isTestMode" class="mb-8 p-4 bg-gray-900/80 rounded border border-yellow-600/50 text-left max-w-2xl w-full">
+                        <h3 class="text-yellow-500 font-bold mb-4 flex items-center">
+                            <span class="text-xl mr-2">🕵️</span> [测试模式] 完整身份揭秘
+                        </h3>
+                        <div class="grid grid-cols-2 gap-4 text-sm">
+                            <div v-for="p in gameState.players" :key="p.name" class="flex justify-between items-center border-b border-gray-800 pb-2">
+                                <span>
+                                    <span class="font-bold" :class="p.team === 'red' ? 'text-red-400' : 'text-blue-400'">
+                                        [{{ p.team.toUpperCase() }}]
+                                    </span> 
+                                    {{ p.name }}
+                                </span>
+                                <span class="font-bold" :class="p.role === '卧底' ? 'text-purple-400' : 'text-green-600'">
+                                    {{ p.role }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button v-if="isAdminMode || isTestMode" @click="resetRoom" 
+                            class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-10 rounded shadow-lg">
+                        重置游戏 / Reset Game
+                    </button>
+                    <p v-else class="text-gray-500">等待管理员重置游戏...</p>
+                </div>
+            </div>
+
             <div v-if="gameState.step === 'PLAYING'" class="max-w-2xl mx-auto text-center pt-10">
                 <h2 class="text-3xl font-bold mb-8">游戏已开始</h2>
 
