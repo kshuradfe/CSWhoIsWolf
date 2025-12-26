@@ -22,12 +22,18 @@
                 <span v-if="isTestMode" class="bg-red-600 text-white text-xs px-2 py-0.5 rounded font-bold ml-2">TEST MODE ON</span>
             </div>
             <div class="text-right">
-                <div v-if="isJoined" class="text-sm">
+                <div v-if="isJoined" class="text-sm mb-2">
                     我是: <span class="font-bold text-green-400">{{ myPlayerName }}</span>
                 </div>
-                <button @click="toggleAdmin" class="text-xs text-gray-600 hover:text-gray-400 underline mt-1">
-                    {{ isAdminMode ? '退出管理' : '管理员模式' }}
-                </button>
+                <div class="flex flex-col items-end gap-2">
+                    <button @click="toggleAdmin" class="text-xs text-gray-600 hover:text-gray-400 underline">
+                        {{ isAdminMode ? '退出管理' : '管理员模式' }}
+                    </button>
+                    <button v-if="isAdminMode" @click="forceRestart" 
+                            class="bg-red-700 hover:bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded border border-red-500 shadow">
+                        🔄 强制重开
+                    </button>
+                </div>
             </div>
         </header>
 

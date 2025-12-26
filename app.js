@@ -307,6 +307,26 @@ createApp({
             });
         };
 
+        const forceRestart = () => {
+            if (!confirm('⚠️ 强制重开将会：\n1. 重置所有游戏状态\n2. 清空所有玩家\n3. 所有人回到取名阶段\n\n确定要执行吗？')) return;
+            
+            isTestMode.value = false;
+            myPlayerName.value = '';
+            localStorage.removeItem('cs_player_name');
+            
+            db.collection('rooms').doc(ROOM_ID).set({
+                step: 'WAITING',
+                players: [],
+                mapPool: {},
+                draftIndex: 0,
+                currentPickCount: 0,
+                banIndex: 0,
+                currentBanCount: 0,
+                captains: { red: '', blue: '' },
+                voting: null
+            });
+        };
+
         const isCaptain = (p) => p.isCaptain;
 
         // --- Role Confirmation Logic ---
@@ -504,7 +524,7 @@ createApp({
             redTeamPlayers, blueTeamPlayers, availablePlayers,
             currentDrafter, isMyTurnToPick, pickPlayer, currentCaptainName,
             currentBanner, isMyTurnToBan, banMap,
-            finalMap, generateRoles, myTeam, myRole, showRole, resetRoom, startGame, isCaptain,
+            finalMap, generateRoles, myTeam, myRole, showRole, resetRoom, forceRestart, startGame, isCaptain,
             isJoined,
             isTestMode, activateTestMode,
             // Role Confirmation
