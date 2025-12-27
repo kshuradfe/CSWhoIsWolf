@@ -27,8 +27,8 @@
                 </div>
                 <div class="flex flex-col items-end gap-2">
                     <button @click="toggleAdmin" class="text-xs text-gray-600 hover:text-gray-400 underline">
-                        {{ isAdminMode ? '退出管理' : '管理员模式' }}
-                    </button>
+                    {{ isAdminMode ? '退出管理' : '管理员模式' }}
+                </button>
                     <button v-if="isAdminMode" @click="forceRestart" 
                             class="bg-red-700 hover:bg-red-600 text-white text-xs font-bold px-3 py-1.5 rounded border border-red-500 shadow">
                         🔄 强制重开
@@ -87,10 +87,10 @@
                 <div v-if="isAdminMode" class="border-t border-gray-700 pt-6">
                     <p class="text-red-400 text-sm mb-2">管理员控制区</p>
                     <button @click="resetRoom" class="mr-4 text-gray-500 underline text-sm">重置房间</button>
-                    <button @click="startGame" :disabled="!gameState.players || gameState.players.length < 2" 
+                        <button @click="startGame" :disabled="!gameState.players || gameState.players.length < 2" 
                             class="bg-green-600 hover:bg-green-500 text-white font-bold py-3 px-10 rounded shadow-lg disabled:opacity-50 mr-4">
-                        开始抽签 (Roll Captains)
-                    </button>
+                            开始抽签 (Roll Captains)
+                        </button>
                     <button @click="activateTestMode" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3 px-6 rounded shadow-lg border border-indigo-400">
                         🛠️ 开启测试模式 (Test Mode)
                     </button>
@@ -214,6 +214,17 @@
                         <p v-else>
                             你是平民！你需要<span class="text-green-400 font-bold">赢下比赛</span>，并在赛后找出谁是队伍里的卧底。
                         </p>
+                    </div>
+
+                    <div v-if="myRole === '卧底' && myMission" class="text-left bg-purple-900/30 border-2 border-purple-600 p-5 rounded-lg text-sm mb-6">
+                        <p class="font-bold mb-3 text-purple-400 text-lg flex items-center">
+                            <span class="text-2xl mr-2">🎯</span> 你的专属任务
+                        </p>
+                        <div class="bg-black/40 p-4 rounded">
+                            <p class="font-bold text-yellow-300 text-base mb-2">"{{ myMission.name }}"</p>
+                            <p class="text-gray-300 leading-relaxed">{{ myMission.desc }}</p>
+                        </div>
+                        <p class="text-xs text-purple-300 mt-3 italic">💡 提示：完成任务的同时要尽量不被发现！</p>
                     </div>
 
                     <button v-if="!isMyRoleConfirmed" @click="confirmRole" 
@@ -367,30 +378,45 @@
                         </div>
                     </div>
 
-                    <div v-if="isTestMode" class="mb-8 p-4 bg-gray-900/80 rounded border border-yellow-600/50 text-left max-w-2xl w-full">
+                    <div v-if="isTestMode" class="mb-8 p-4 bg-gray-900/80 rounded border border-yellow-600/50 text-left max-w-3xl w-full">
                         <h3 class="text-yellow-500 font-bold mb-4 flex items-center">
                             <span class="text-xl mr-2">🕵️</span> [测试模式] 完整身份揭秘
                         </h3>
-                        <div class="grid grid-cols-2 gap-4 text-sm">
-                            <div v-for="p in gameState.players" :key="p.name" class="flex justify-between items-center border-b border-gray-800 pb-2">
-                                <span>
-                                    <span class="font-bold" :class="p.team === 'red' ? 'text-red-400' : 'text-blue-400'">
-                                        [{{ p.team.toUpperCase() }}]
-                                    </span> 
-                                    {{ p.name }}
-                                </span>
-                                <span class="font-bold" :class="p.role === '卧底' ? 'text-purple-400' : 'text-green-600'">
-                                    {{ p.role }}
-                                </span>
+                        <div class="space-y-3 text-sm">
+                            <div v-for="p in gameState.players" :key="p.name" 
+                                 class="p-3 rounded border"
+                                 :class="p.role === '卧底' ? 'bg-purple-900/20 border-purple-700' : 'bg-gray-800/50 border-gray-700'">
+                                <div class="flex justify-between items-start mb-2">
+                                    <span>
+                                        <span class="font-bold" :class="p.team === 'red' ? 'text-red-400' : 'text-blue-400'">
+                                            [{{ p.team.toUpperCase() }}]
+                                        </span> 
+                                        <span class="text-white font-bold">{{ p.name }}</span>
+                                    </span>
+                                    <span class="font-bold" :class="p.role === '卧底' ? 'text-purple-400' : 'text-green-600'">
+                                        {{ p.role }}
+                                    </span>
+                                </div>
+                                <div v-if="p.role === '卧底' && p.mission" class="mt-2 pl-3 border-l-2 border-purple-500">
+                                    <p class="text-yellow-400 font-bold text-xs mb-1">任务: "{{ p.mission.name }}"</p>
+                                    <p class="text-gray-400 text-xs">{{ p.mission.desc }}</p>
+                                </div>
                             </div>
                         </div>
                     </div>
 
-                    <button v-if="isAdminMode || isTestMode" @click="resetRoom" 
-                            class="bg-red-600 hover:bg-red-500 text-white font-bold py-3 px-10 rounded shadow-lg">
-                        重置游戏 / Reset Game
-                    </button>
-                    <p v-else class="text-gray-500">等待管理员重置游戏...</p>
+                    <div class="flex flex-col items-center gap-4">
+                        <button @click="restartGame" 
+                                class="bg-green-600 hover:bg-green-500 text-white font-bold py-4 px-12 rounded-lg shadow-lg text-lg">
+                            🔄 重新开始游戏
+                        </button>
+                        <p class="text-sm text-gray-400">需要管理员密码 · 所有玩家回到起名界面 · 游戏完全重置</p>
+                        
+                        <button v-if="isAdminMode || isTestMode" @click="resetRoom" 
+                                class="mt-4 bg-red-600 hover:bg-red-500 text-white font-bold py-2 px-8 rounded shadow-lg text-sm">
+                            🛑 管理员：强制重置房间
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -413,7 +439,7 @@
                         </div>
                     </div>
 
-                    <div class="text-left bg-black/30 p-4 rounded text-sm">
+                    <div class="text-left bg-black/30 p-4 rounded text-sm mb-6">
                         <p class="font-bold mb-1 text-yellow-500">任务目标：</p>
                         <p v-if="myRole === '卧底'">
                             你是卧底！你需要<span class="text-red-400 font-bold">让你的队伍输掉比赛</span>，但必须演得像个正常人，不能被队友发现。
@@ -422,23 +448,42 @@
                             你是平民！你需要<span class="text-green-400 font-bold">赢下比赛</span>，并在赛后找出谁是队伍里的卧底。
                         </p>
                     </div>
+
+                    <div v-if="myRole === '卧底' && myMission" class="text-left bg-purple-900/30 border-2 border-purple-600 p-5 rounded-lg text-sm">
+                        <p class="font-bold mb-3 text-purple-400 text-lg flex items-center">
+                            <span class="text-2xl mr-2">🎯</span> 你的专属任务
+                        </p>
+                        <div class="bg-black/40 p-4 rounded">
+                            <p class="font-bold text-yellow-300 text-base mb-2">"{{ myMission.name }}"</p>
+                            <p class="text-gray-300 leading-relaxed">{{ myMission.desc }}</p>
+                        </div>
+                        <p class="text-xs text-purple-300 mt-3 italic">💡 提示：完成任务的同时要尽量不被发现！</p>
+                    </div>
                 </div>
 
-                <div v-if="isTestMode" class="mt-8 p-4 bg-gray-900/80 rounded border border-yellow-600/50 text-left max-w-lg mx-auto">
+                <div v-if="isTestMode" class="mt-8 p-4 bg-gray-900/80 rounded border border-yellow-600/50 text-left max-w-3xl mx-auto">
                     <h3 class="text-yellow-500 font-bold mb-4 flex items-center">
                         <span class="text-xl mr-2">🕵️</span> [测试模式] 上帝视角 - 身份揭秘
                     </h3>
-                    <div class="grid grid-cols-2 gap-4 text-sm">
-                        <div v-for="p in gameState.players" :key="p.name" class="flex justify-between items-center border-b border-gray-800 pb-2">
-                            <span>
-                                <span class="font-bold" :class="p.team === 'red' ? 'text-red-400' : 'text-blue-400'">
-                                    [{{ p.team.toUpperCase() }}]
-                                </span> 
-                                {{ p.name }}
-                            </span>
-                            <span class="font-bold" :class="p.role === '卧底' ? 'text-purple-400' : 'text-green-600'">
-                                {{ p.role }}
-                            </span>
+                    <div class="space-y-3 text-sm">
+                        <div v-for="p in gameState.players" :key="p.name" 
+                             class="p-3 rounded border"
+                             :class="p.role === '卧底' ? 'bg-purple-900/20 border-purple-700' : 'bg-gray-800/50 border-gray-700'">
+                            <div class="flex justify-between items-start mb-2">
+                                <span>
+                                    <span class="font-bold" :class="p.team === 'red' ? 'text-red-400' : 'text-blue-400'">
+                                        [{{ p.team.toUpperCase() }}]
+                                    </span> 
+                                    <span class="text-white font-bold">{{ p.name }}</span>
+                                </span>
+                                <span class="font-bold" :class="p.role === '卧底' ? 'text-purple-400' : 'text-green-600'">
+                                    {{ p.role }}
+                                </span>
+                            </div>
+                            <div v-if="p.role === '卧底' && p.mission" class="mt-2 pl-3 border-l-2 border-purple-500">
+                                <p class="text-yellow-400 font-bold text-xs mb-1">任务: "{{ p.mission.name }}"</p>
+                                <p class="text-gray-400 text-xs">{{ p.mission.desc }}</p>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -79,6 +79,7 @@ createApp({
 
         const myTeam = computed(() => myPlayerInfo.value ? myPlayerInfo.value.team : '');
         const myRole = computed(() => myPlayerInfo.value ? myPlayerInfo.value.role : '');
+        const myMission = computed(() => myPlayerInfo.value ? myPlayerInfo.value.mission : null);
         
         const redTeamPlayers = computed(() => (gameState.value.players || []).filter(p => p.team === 'red'));
         const blueTeamPlayers = computed(() => (gameState.value.players || []).filter(p => p.team === 'blue'));
@@ -269,15 +270,36 @@ createApp({
             });
         };
 
+        const undercoverMissions = [
+            { name: "静步恐惧症", desc: "在残局或者是回防的时候，莫名其妙地切刀或者跳跃，漏出一个脚步声。" },
+            { name: "钳子遗忘者", desc: "作为 CT，即使有 4000+ 的经济，也坚决不买拆弹器。如果是 T，不捡地上的包，除非队友扔给你。" },
+            { name: "无甲莽夫", desc: "在至少一把需要起全甲的局，不起甲。" },
+            { name: "老爸到了", desc: "在架点或者准备拉出去打人的关键时刻，按 F 检视武器。" },
+            { name: "精神分裂报点", desc: "在残局或者静步摸排的时候，报假点，骗队友全体转点，把这就空的包点卖给对面。" },
+            { name: "电击狂魔", desc: "在长枪局，一定要尝试用电击枪去电死一个人。" },
+            { name: "不管不顾去拆包", desc: "作为 CT 回防时，不封烟或者不检查死角，直接上去假拆（或者真拆），并在语音里大喊\'帮我架枪帮我架枪！\'。" },
+            { name: "自信回头", desc: "跟人对枪对到一半（没死也没杀掉），突然切刀转身跑路，或者想去扔道具。" },
+            { name: "烟中恶鬼", desc: "封了一颗烟雾弹，然后自己硬着头皮干拉混烟出，白给。" },
+            { name: "甚至不愿意封一颗烟", desc: "队友喊\'给颗过点烟\'或者\'封个链接\'的时候，假装切出烟雾弹瞄了半天，然后扔疵了，导致队友干拉出去被架死。" }
+        ];
+
         const generateRoles = () => {
             let players = [...gameState.value.players];
             
             const assignTeamRole = (teamName) => {
                 let teamMembers = players.filter(p => p.team === teamName);
                 let undercoverIdx = Math.floor(Math.random() * teamMembers.length);
+                // 随机选择一个任务
+                let missionIdx = Math.floor(Math.random() * undercoverMissions.length);
+                let mission = undercoverMissions[missionIdx];
+                
                 teamMembers.forEach((p, idx) => {
                     let mainIdx = players.findIndex(mp => mp.name === p.name);
                     players[mainIdx].role = (idx === undercoverIdx) ? '卧底' : '平民';
+                    // 为卧底分配任务
+                    if (idx === undercoverIdx) {
+                        players[mainIdx].mission = mission;
+                    }
                     // Initialize confirmed property
                     players[mainIdx].confirmed = isTestMode.value && p.name.startsWith('Bot_') ? true : false;
                 });
@@ -325,6 +347,52 @@ createApp({
                 captains: { red: '', blue: '' },
                 voting: null
             });
+        };
+
+        const restartGame = async () => {
+            // 弹出密码输入框
+            const password = prompt("🔒 重新开始游戏需要管理员权限\n请输入管理员密码：");
+            if (!password) return; // 用户取消
+
+            try {
+                // 获取 Firebase 中的密码配置
+                const configDoc = await db.collection('settings').doc('admin_config').get();
+
+                // 如果数据库里还没有设置过密码
+                if (!configDoc.exists) {
+                    alert("⚠️ 尚未设置管理员密码。\n请先进入管理员模式设置密码。");
+                    return;
+                }
+
+                // 验证密码
+                const serverHash = configDoc.data().password_hash;
+                const inputHash = await sha256(password);
+
+                if (inputHash === serverHash) {
+                    // 密码正确，执行重启
+                    isTestMode.value = false;
+                    myPlayerName.value = '';
+                    localStorage.removeItem('cs_player_name');
+                    
+                    db.collection('rooms').doc(ROOM_ID).set({
+                        step: 'WAITING',
+                        players: [],
+                        mapPool: {},
+                        draftIndex: 0,
+                        currentPickCount: 0,
+                        banIndex: 0,
+                        currentBanCount: 0,
+                        captains: { red: '', blue: '' },
+                        voting: null
+                    });
+                } else {
+                    alert("❌ 密码错误，无法重新开始游戏。");
+                }
+
+            } catch (err) {
+                console.error("Auth Error:", err);
+                alert("验证过程中发生错误，请检查网络或控制台。");
+            }
         };
 
         const isCaptain = (p) => p.isCaptain;
@@ -524,7 +592,7 @@ createApp({
             redTeamPlayers, blueTeamPlayers, availablePlayers,
             currentDrafter, isMyTurnToPick, pickPlayer, currentCaptainName,
             currentBanner, isMyTurnToBan, banMap,
-            finalMap, generateRoles, myTeam, myRole, showRole, resetRoom, forceRestart, startGame, isCaptain,
+            finalMap, generateRoles, myTeam, myRole, myMission, showRole, resetRoom, forceRestart, restartGame, startGame, isCaptain,
             isJoined,
             isTestMode, activateTestMode,
             // Role Confirmation
